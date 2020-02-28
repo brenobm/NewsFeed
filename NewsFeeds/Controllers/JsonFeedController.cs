@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -53,24 +54,18 @@ namespace NewsFeeds.Controllers
             var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(15);
 
-            using (var request = new HttpRequestMessage(HttpMethod.Get, new Uri(url)))
-            {
-                request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml");
-                request.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip, deflate");
-                request.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 6.2; WOW64; rv:19.0) Gecko/20100101 Firefox/19.0");
-                request.Headers.TryAddWithoutValidation("Accept-Charset", "ISO-8859-1");
+            var response = await httpClient.GetAsync(new Uri(url));
 
-                using (var response = await httpClient.SendAsync(request).ConfigureAwait(false))
-                {
-                    response.EnsureSuccessStatusCode();
-                    using (var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                    using (var decompressedStream = new GZipStream(responseStream, CompressionMode.Decompress))
-                    using (var streamReader = new StreamReader(decompressedStream))
-                    {
-                        return await streamReader.ReadToEndAsync().ConfigureAwait(false);
-                    }
-                }
-            }
+            var content = await response.Content.ReadAsByteArrayAsync();
+
+            var text = Encoding.UTF8.GetString(content);
+
+            if (text.Contains("ISO-8859-1"))
+                text = Encoding
+                    .GetEncoding("iso-8859-1")
+                    .GetString(content);
+
+            return text;
         }
 
         private IEnumerable<Entry> ParseXmlForEM(string xmlText)
@@ -85,7 +80,7 @@ namespace NewsFeeds.Controllers
                 {
                     uid = x.Element("guid")?.Value ?? "vazio",
                     titleText = x.Element("title")?.Value ?? "vazio",
-                    mainText = x.Element("subtitle")?.Value ?? "vazio",
+                    mainText = $"{(x.Element("title")?.Value ?? "")} - {x.Element("subtitle")?.Value ?? "vazio"}",
                     updateDate = DateTime.Parse(x.Element("pubDate")?.Value).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz") ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:sszzz"),
                     redirectionUrl = x.Element("link")?.Value ?? "vazio"
                 });
@@ -105,7 +100,7 @@ namespace NewsFeeds.Controllers
                 {
                     uid = Guid.NewGuid().ToString(),
                     titleText = x.Element("title")?.Value ?? "vazio",
-                    mainText = x.Element("description")?.Value ?? "vazio",
+                    mainText = $"{(x.Element("title")?.Value ?? "")} - {x.Element("description")?.Value ?? "vazio"}",
                     updateDate = DateTime.Parse(x.Element("pubDate")?.Value).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:sszzz") ?? DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:sszzz"),
                     redirectionUrl = x.Element("link")?.Value ?? "vazio"
                 });
